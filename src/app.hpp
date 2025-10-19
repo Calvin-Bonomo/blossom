@@ -10,14 +10,16 @@
 #include <vector>
 #include <cstring>
 #include <optional>
+#include <set>
 
 struct QueueFamilyIndices 
 {
     std::optional<uint32_t> graphicsFamily;
+    std::optional<uint32_t> presentFamily;
 
     bool isComplete()
     {
-        return graphicsFamily.has_value();
+        return graphicsFamily.has_value() && presentFamily.has_value();
     }
 };
 
@@ -47,12 +49,21 @@ private:
     void PickPhysicalDevice();
     bool IsDeviceSuitable(VkPhysicalDevice device);
     QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device);
+    void CreateLogicalDevice();
+
+    void CreateSurface();
 
 private:
     GLFWwindow *m_Window;
 
     VkInstance m_Instance;
     VkDebugUtilsMessengerEXT m_DebugMessenger;
+    VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
+    VkDevice m_Device;
+    VkQueue m_GraphicsQueue;
+
+    VkSurfaceKHR m_Surface;
+    VkQueue m_PresentQueue;
     
     static constexpr uint32_t WINDOW_WIDTH = 800;
     static constexpr uint32_t WINDOW_HEIGHT = 600;
