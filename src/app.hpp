@@ -9,6 +9,17 @@
 #include <cstdlib>
 #include <vector>
 #include <cstring>
+#include <optional>
+
+struct QueueFamilyIndices 
+{
+    std::optional<uint32_t> graphicsFamily;
+
+    bool isComplete()
+    {
+        return graphicsFamily.has_value();
+    }
+};
 
 class HelloTriangleApplication
 {
@@ -32,6 +43,10 @@ private:
     
     void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT &createInfo);
     void SetupDebugMessenger();
+
+    void PickPhysicalDevice();
+    bool IsDeviceSuitable(VkPhysicalDevice device);
+    QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device);
 
 private:
     GLFWwindow *m_Window;
