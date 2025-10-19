@@ -1,1 +1,6 @@
+# build stuff
 build/
+
+# LSP stuff
+.ccls-cache/
+compile_commands.json
