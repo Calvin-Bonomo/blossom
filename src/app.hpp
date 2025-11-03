@@ -68,6 +68,7 @@ private:
     VkPresentModeKHR ChooseSwapPresentMode(const std::vector<VkPresentModeKHR> &availablePresentModes);
     VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities);
     void CreateSwapChain();
+    void CreateImageViews();
 
 private:
     GLFWwindow *m_Window;
@@ -86,6 +87,8 @@ private:
     std::vector<VkImage> m_SwapchainImages;
     VkFormat m_SwapchainImageFormat;
     VkExtent2D m_SwapchainExtent;
+
+    std::vector<VkImageView> m_SwapchainImageViews;
     
     static constexpr uint32_t WINDOW_WIDTH = 800;
     static constexpr uint32_t WINDOW_HEIGHT = 600;
