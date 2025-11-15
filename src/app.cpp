@@ -23,8 +23,9 @@ App::App()
 
 App::~App() 
 {
-    m_Instance.destroy();
+    m_Device.destroy();
 
+    m_Instance.destroy();
     glfwDestroyWindow(m_Window);
     glfwTerminate();
 }
