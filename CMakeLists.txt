@@ -12,17 +12,17 @@ if ( ${Vulkan_VERSION} VERSION_LESS "1.3.256")
 endif()
 
 add_library( VulkanHppModule )
-target_sources( VulkanHppModule PRIVATE
+target_sources( VulkanHppModule PUBLIC 
     FILE_SET CXX_MODULES
     BASE_DIRS ${Vulkan_INCLUDE_DIR}
     FILES ${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm
 )
-target_compile_features(VulkanHppModule PUBLIC cxx_std_20)
+target_compile_features(VulkanHppModule PUBLIC cxx_std_23)
 target_link_libraries(VulkanHppModule PUBLIC Vulkan::Vulkan)
 
 add_executable(${PROJECT_NAME} src/app.cpp src/app.hpp)
-target_link_libraries(${PROJECT_NAME} PRIVATE glfw VulkanHppModule)
+target_link_libraries(${PROJECT_NAME} glfw VulkanHppModule)
 
-set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 23)
-set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD_REQUIRED ON)
-
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
