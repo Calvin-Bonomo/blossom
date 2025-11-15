@@ -18,6 +18,7 @@ App::App()
 {
     InitGLFW();
     InitVulkan();
+    CreateDevice();
 }
 
 App::~App() 
@@ -56,7 +57,7 @@ void App::InitVulkan()
         auto instanceExtensions = GetInstanceExtensions();
 
         vk::InstanceCreateInfo instanceCI(
-            {}, 
+            vk::InstanceCreateFlags(), 
             &appInfo, 
             instanceLayers.size(), 
             instanceLayers.data(), 
@@ -107,4 +108,78 @@ std::vector<const char *> App::GetInstanceExtensions()
     std::vector<const char *> extensionNames(glfwExtensions, glfwExtensions + extensionCount);
 
     return extensionNames;
+}
+
+void App::CreateDevice()
+{
+    std::vector<vk::PhysicalDevice> physicalDevices = m_Instance.enumeratePhysicalDevices();
+    
+    bool deviceFound = false;
+
+    QueueFamilyInfo queueFamilyInfo;
+
+    for (const auto &device : physicalDevices)
+    {
+        if (CheckPhysicalDevice(device, queueFamilyInfo))
+        {
+            m_PhysicalDevice = device;
+            deviceFound = true;
+            break;
+        }
+        queueFamilyInfo.Reset();
+    }
+
+    if (!deviceFound)
+        throw std::runtime_error("Unable to find suitable physical device!");
+
+    float priority = 0.0f;
+    std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
+    queueCreateInfos.push_back(vk::DeviceQueueCreateInfo(
+            vk::DeviceQueueCreateFlags(), 
+            static_cast<uint32_t>(queueFamilyInfo.graphicsIndex), 
+            1, 
+            &priority));
+    queueCreateInfos.push_back(vk::DeviceQueueCreateInfo(
+            vk::DeviceQueueCreateFlags(),
+            static_cast<uint32_t>(queueFamilyInfo.computeIndex),
+            1,
+            &priority));
+    std::print("{}", queueCreateInfos[0].queueFamilyIndex);
+    vk::DeviceCreateInfo deviceCI(vk::DeviceCreateFlags(), static_cast<uint32_t>(queueCreateInfos.size()), queueCreateInfos.data());
+
+    try
+    {
+        m_Device = m_PhysicalDevice.createDevice(deviceCI);
+    }
+    catch (std::exception const &e)
+    {
+        std::print(stderr, "Unable to create logical device!\n{}", e.what());
+        exit(1);
+    }
+}
+
+bool App::CheckPhysicalDevice(const vk::PhysicalDevice &device, QueueFamilyInfo &queueFamilyInfo)
+{
+    auto properties = device.getProperties2().properties;
+
+    if (device.getProperties().deviceType != vk::PhysicalDeviceType::eDiscreteGpu)
+        return false;
+
+    std::vector<vk::QueueFamilyProperties2> queueFamilies = device.getQueueFamilyProperties2();
+
+    for (int i = 0; i < queueFamilies.size(); i++)
+    {
+       if (queueFamilies[i].queueFamilyProperties.queueFlags & vk::QueueFlagBits::eGraphics)
+       {
+           queueFamilyInfo.graphicsIndex = i;
+           continue;
+       }
+       if (queueFamilies[i].queueFamilyProperties.queueFlags & vk::QueueFlagBits::eCompute)
+       {
+           queueFamilyInfo.computeIndex = i;
+           continue;
+       }
+    }
+
+    return queueFamilyInfo.graphicsIndex >= 0 && queueFamilyInfo.computeIndex >= 0;
 }
