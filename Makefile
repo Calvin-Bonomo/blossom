@@ -6,7 +6,7 @@ release:
 	cmake --build build/release
 
 debug:
-	mkdir -p build/release
+	mkdir -p build/debug
 	cmake -B build/debug -S . -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -G Ninja
 	cmake --build build/debug
 
