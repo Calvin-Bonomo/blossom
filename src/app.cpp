@@ -1,5 +1,3 @@
-import vulkan_hpp;
-
 #include "app.hpp"
 
 #include <exception>
@@ -145,6 +143,12 @@ void App::CreateDevice()
             static_cast<uint32_t>(queueFamilyInfo.computeIndex),
             1,
             &priority));
+    queueCreateInfos.push_back(vk::DeviceQueueCreateInfo(
+            vk::DeviceQueueCreateFlags(),
+            static_cast<uint32_t>(queueFamilyInfo.presentIndex),
+            1,
+            &priority));
+
     std::print("{}", queueCreateInfos[0].queueFamilyIndex);
     vk::DeviceCreateInfo deviceCI(vk::DeviceCreateFlags(), static_cast<uint32_t>(queueCreateInfos.size()), queueCreateInfos.data());
 
@@ -173,14 +177,16 @@ bool App::CheckPhysicalDevice(const vk::PhysicalDevice &device, QueueFamilyInfo 
        if (queueFamilies[i].queueFamilyProperties.queueFlags & vk::QueueFlagBits::eGraphics)
        {
            queueFamilyInfo.graphicsIndex = i;
-           continue;
        }
        if (queueFamilies[i].queueFamilyProperties.queueFlags & vk::QueueFlagBits::eCompute)
        {
            queueFamilyInfo.computeIndex = i;
-           continue;
+       }
+       if (glfwGetPhysicalDevicePresentationSupport(m_Instance, device, i) == GLFW_TRUE)
+       {
+           queueFamilyInfo.presentIndex = i;
        }
     }
 
-    return queueFamilyInfo.graphicsIndex >= 0 && queueFamilyInfo.computeIndex >= 0;
+    return queueFamilyInfo.IsComplete(); 
 }
