@@ -1,5 +1,6 @@
 #include "app.hpp"
 
+VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE;
 
 int main() {
     App app;
@@ -8,16 +9,29 @@ int main() {
 }
 
 App::App()
+    : m_WindowResized(false)
 {
     InitGLFW();
     InitVulkan();
     CreateDevice();
     CreateSurface();
     CreateSwapchain();
+    CreateShaders("res/vert.spv", "res/frag.spv");
+    SetupDraw();
 }
 
 App::~App() 
 {
+    m_Device.destroyFence(m_ExecutionFence);
+    m_Device.destroyCommandPool(m_CommandPool);
+    for (const auto &semaphore : m_AcquireFrameSemaphores)
+        m_Device.destroySemaphore(semaphore);
+    for (const auto &semaphore : m_ReleaseFrameSemaphores)
+        m_Device.destroySemaphore(semaphore);
+    m_Device.destroyShaderEXT(m_VertexShader);
+    m_Device.destroyShaderEXT(m_FragmentShader);
+    for (const auto &imageView : m_SwapchainImageViews)
+        m_Device.destroyImageView(imageView);
     m_Device.destroySwapchainKHR(m_Swapchain);
     m_Device.destroy();
     m_Instance.destroySurfaceKHR(m_Surface);
@@ -31,8 +45,96 @@ void App::Run()
 {
     while (!glfwWindowShouldClose(m_Window))
     {
+        while (m_Device.waitForFences(m_ExecutionFence, vk::True, 0) == vk::Result::eTimeout);
+
+        vk::ResultValue<uint32_t> imageIndex = m_Device.acquireNextImageKHR(m_Swapchain, UINT64_MAX, m_AcquireFrameSemaphores[m_CurrentFrame]);
+        if (imageIndex.result == vk::Result::eSuboptimalKHR || imageIndex.result == vk::Result::eErrorOutOfDateKHR)
+        {
+            std::print("Swapchain out of date! Recreating...\n");
+            DestroySwapchain();
+            CreateSwapchain();
+            continue;
+        }
+
+        m_DrawBuffer.reset();
+        m_Device.resetFences(m_ExecutionFence);
+
+        vk::RenderingAttachmentInfo colorAttachmentInfo(
+                m_SwapchainImageViews[imageIndex.value], 
+                vk::ImageLayout::eColorAttachmentOptimal, 
+                vk::ResolveModeFlagBits::eNone,
+                nullptr,
+                vk::ImageLayout::eUndefined,
+                vk::AttachmentLoadOp::eClear,
+                vk::AttachmentStoreOp::eStore,
+                vk::ClearValue({0.0f, 0.0f, 0.0f, 1.0f}));
+        vk::Rect2D renderArea({0, 0}, {m_Settings.width, m_Settings.height});
+        vk::RenderingInfo renderInfo({ }, renderArea, 1, 0, colorAttachmentInfo);
+
+        vk::ImageSubresourceRange range(
+                vk::ImageAspectFlagBits::eColor, 
+                0, 
+                vk::RemainingMipLevels,
+                0,
+                vk::RemainingArrayLayers);
+
+        m_DrawBuffer.begin(vk::CommandBufferBeginInfo());
+
+        vk::ImageMemoryBarrier2 colorTransitionBarrier(
+                vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+                vk::AccessFlagBits2::eNone,
+                vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+                vk::AccessFlagBits2::eColorAttachmentWrite,
+                vk::ImageLayout::eUndefined,
+                vk::ImageLayout::eColorAttachmentOptimal,
+                m_QueueFamilyInfo.graphicsIndex,
+                m_QueueFamilyInfo.graphicsIndex,
+                m_SwapchainImages[imageIndex.value],
+                range);
+
+        m_DrawBuffer.pipelineBarrier2(vk::DependencyInfo({ }, nullptr, nullptr, colorTransitionBarrier));
+
+        m_DrawBuffer.beginRendering(renderInfo);
+
+        m_DrawBuffer.endRendering();
+
+        vk::ImageMemoryBarrier2 presentTransitionBarrier(
+                vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+                vk::AccessFlagBits2::eColorAttachmentWrite,
+                vk::PipelineStageFlagBits2::eNone,
+                vk::AccessFlagBits2::eNone,
+                vk::ImageLayout::eColorAttachmentOptimal,
+                vk::ImageLayout::ePresentSrcKHR,
+                m_QueueFamilyInfo.graphicsIndex,
+                m_QueueFamilyInfo.presentIndex,
+                m_SwapchainImages[imageIndex.value],
+                range);
+
+        m_DrawBuffer.pipelineBarrier2(vk::DependencyInfo({ }, nullptr, nullptr, presentTransitionBarrier));
+
+        m_DrawBuffer.end();
+
+        vk::SemaphoreSubmitInfo waitSemaphoreSubmitInfo(m_AcquireFrameSemaphores[m_CurrentFrame], 0, vk::PipelineStageFlagBits2::eTopOfPipe);
+        vk::SemaphoreSubmitInfo signalSemaphoreSubmitInfo(m_ReleaseFrameSemaphores[m_CurrentFrame], 0, vk::PipelineStageFlagBits2::eBottomOfPipe);
+        vk::CommandBufferSubmitInfo commandBufferSubmitInfo(m_DrawBuffer);
+
+        vk::SubmitInfo2 submitInfo({ }, waitSemaphoreSubmitInfo, commandBufferSubmitInfo, signalSemaphoreSubmitInfo);
+
+        m_GraphicsQueue.submit2(submitInfo, m_ExecutionFence);
+
+        vk::Result result = m_PresentQueue.presentKHR(vk::PresentInfoKHR(m_ReleaseFrameSemaphores[m_CurrentFrame], m_Swapchain, imageIndex.value));
+        if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || m_WindowResized)
+        {
+            m_WindowResized = false;
+            DestroySwapchain();
+            CreateSwapchain();
+            continue;
+        }
+        m_CurrentFrame = (m_CurrentFrame + 1) % m_SwapchainImages.size();
         glfwPollEvents();
     }
+
+    m_Device.waitIdle();
 }
 
 void App::InitGLFW()
@@ -41,13 +143,18 @@ void App::InitGLFW()
         throw std::runtime_error("Unable to initialize glfw!");
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+    glfwWindowHint(GLFW_FLOATING, GLFW_FALSE);
 
     m_Window = glfwCreateWindow(m_Settings.width, m_Settings.height, "Blossom", nullptr, nullptr);
+    glfwSetWindowUserPointer(m_Window, this);
+    glfwSetWindowSizeCallback(m_Window, OnResize);
 }
 
 void App::InitVulkan()
 {
+    VULKAN_HPP_DEFAULT_DISPATCHER.init();
+
     vk::ApplicationInfo appInfo("Blossom", 1, nullptr, 1, vk::ApiVersion14);
     auto instanceLayers = GetInstanceLayers();
     auto instanceExtensions = GetInstanceExtensions();
@@ -60,6 +167,8 @@ void App::InitVulkan()
         instanceExtensions.size(), 
         instanceExtensions.data());
     VK_CHECK_AND_SET(m_Instance, vk::createInstance(instanceCI), "Unable to create Vulkan instance");
+
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Instance);
 }
 
 std::vector<const char *> App::GetInstanceLayers()
@@ -124,20 +233,41 @@ void App::CreateDevice()
 
     float priority = 0.0f;
     std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
-    queueCreateInfos.push_back(vk::DeviceQueueCreateInfo(
-            vk::DeviceQueueCreateFlags(), 
-            static_cast<uint32_t>(m_QueueFamilyInfo.graphicsIndex), 
-            1, 
-            &priority));
-    queueCreateInfos.push_back(vk::DeviceQueueCreateInfo(
-                vk::DeviceQueueCreateFlags(),
-                static_cast<uint32_t>(m_QueueFamilyInfo.computeIndex),
-                1,
-                &priority));
+    for (const auto &uniqueQueue : m_QueueFamilyInfo.GetUniqueQueueIndices())
+    {
+        queueCreateInfos.push_back(
+                vk::DeviceQueueCreateInfo(
+                    { },
+                    static_cast<uint32_t>(uniqueQueue),
+                    1,
+                    &priority));
+    }
 
-    const char *deviceExtensions[] = { vk::KHRSwapchainExtensionName };
-    vk::DeviceCreateInfo deviceCI(vk::DeviceCreateFlags(), queueCreateInfos, {}, deviceExtensions);
-    VK_CHECK_AND_SET(m_Device, m_PhysicalDevice.createDevice(deviceCI), "Unable to create logical device!");
+    vk::PhysicalDeviceVulkan13Features vulkan13Features;
+    vulkan13Features.dynamicRendering = vk::True;
+    vulkan13Features.synchronization2 = vk::True;
+
+    vk::PhysicalDeviceFeatures2 deviceFeatures;
+
+    vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceShaderObjectFeaturesEXT> chain = {
+        deviceFeatures,
+        vulkan13Features,
+        vk::PhysicalDeviceShaderObjectFeaturesEXT(vk::True)
+    };
+
+    const char *deviceExtensions[] = { vk::KHRSwapchainExtensionName, vk::EXTShaderObjectExtensionName };
+    vk::StructureChain<vk::DeviceCreateInfo, vk::PhysicalDeviceFeatures2> deviceCreateChain = {
+        vk::DeviceCreateInfo(vk::DeviceCreateFlags(), queueCreateInfos, {}, deviceExtensions),
+        chain.get<vk::PhysicalDeviceFeatures2>()
+    };
+
+    VK_CHECK_AND_SET(m_Device, m_PhysicalDevice.createDevice(deviceCreateChain.get<vk::DeviceCreateInfo>()), "Unable to create logical device!");
+
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Device);
+
+    VK_CHECK_AND_SET(m_GraphicsQueue, m_Device.getQueue(m_QueueFamilyInfo.graphicsIndex, 0), "Unable to get graphics queue");
+    VK_CHECK_AND_SET(m_PresentQueue, m_Device.getQueue(m_QueueFamilyInfo.presentIndex, 0), "Unable to get present queue");
+    VK_CHECK_AND_SET(m_ComputeQueue, m_Device.getQueue(m_QueueFamilyInfo.computeIndex, 0), "Unable to get compute queue");
 }
 
 bool App::CheckPhysicalDevice(const vk::PhysicalDevice &device)
@@ -149,9 +279,11 @@ bool App::CheckPhysicalDevice(const vk::PhysicalDevice &device)
 
     for (int i = 0; i < queueFamilies.size(); i++)
     {
-       if (queueFamilies[i].queueFlags & vk::QueueFlagBits::eGraphics && glfwGetPhysicalDevicePresentationSupport(m_Instance, device, i))
+       if (queueFamilies[i].queueFlags & vk::QueueFlagBits::eGraphics)
            m_QueueFamilyInfo.graphicsIndex = i;
-       if (queueFamilies[i].queueFlags & vk::QueueFlagBits::eCompute && m_QueueFamilyInfo.graphicsIndex != i) 
+       if (glfwGetPhysicalDevicePresentationSupport(m_Instance, device, i)) 
+           m_QueueFamilyInfo.presentIndex = i;
+       if (queueFamilies[i].queueFlags & vk::QueueFlagBits::eCompute)
            m_QueueFamilyInfo.computeIndex = i;
 
        if (m_QueueFamilyInfo.IsComplete())
@@ -200,10 +332,12 @@ void App::CreateSwapchain()
         minImageCount = surfaceCapabilities.maxImageCount;
 
     auto extent = surfaceCapabilities.currentExtent;
-    if (extent.width == ~(uint32_t)0 && extent.height == ~(uint32_t)0)
+    if (extent.width == std::numeric_limits<uint32_t>::max())
     {
-        extent.width = Clamp(m_Settings.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
-        extent.height = Clamp(m_Settings.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+        int width, height;
+        glfwGetFramebufferSize(m_Window, &width, &height);
+        extent.width = std::clamp(static_cast<uint32_t>(width), surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
+        extent.height = std::clamp(static_cast<uint32_t>(height), surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
     }
 
     // Keep track of the surface size internally
@@ -221,6 +355,10 @@ void App::CreateSwapchain()
                     [] (vk::PresentModeKHR const &presentMode) { return presentMode == vk::PresentModeKHR::eMailbox; }))
         presentMode = vk::PresentModeKHR::eMailbox;
 
+    vk::SwapchainKHR oldSwapchain = nullptr;
+    if (m_Swapchain != nullptr)
+        oldSwapchain = m_Swapchain;
+
     vk::SwapchainCreateInfoKHR swapchainCI(
             vk::SwapchainCreateFlagsKHR(),
             m_Surface,
@@ -236,7 +374,130 @@ void App::CreateSwapchain()
             vk::CompositeAlphaFlagBitsKHR::eOpaque,
             presentMode,
             vk::True,
-            nullptr);
+            oldSwapchain); 
     VK_CHECK_AND_SET(m_Swapchain, m_Device.createSwapchainKHR(swapchainCI), "Unable to create swapchain");
+
+    if (oldSwapchain != nullptr)
+        m_Device.destroySwapchainKHR(oldSwapchain);
+
+    VK_CHECK_AND_SET(m_SwapchainImages, m_Device.getSwapchainImagesKHR(m_Swapchain), "Unable to get swapchain images");
+    vk::ImageSubresourceRange range(
+            vk::ImageAspectFlagBits::eColor, 
+            0, 
+            vk::RemainingMipLevels, 
+            0, 
+            vk::RemainingArrayLayers);
+    vk::ImageView imageView;
+    for (const auto &image : m_SwapchainImages)
+    {
+        vk::ImageViewCreateInfo imageViewCI({ }, image, vk::ImageViewType::e2D, format, { }, range);
+        VK_CHECK_AND_SET(imageView, m_Device.createImageView(imageViewCI), "Unable to create image view");
+        m_SwapchainImageViews.push_back(imageView);
+    }
 }
 
+void App::DestroySwapchain()
+{
+    for (const auto &imageView : m_SwapchainImageViews)
+        m_Device.destroyImageView(imageView);
+
+    m_SwapchainImageViews.clear();
+    m_SwapchainImages.clear();
+}
+
+void App::SetupDraw()
+{
+    m_CurrentFrame = 0;
+
+    for (int i = 0; i < m_SwapchainImages.size(); i++)
+    {
+        vk::Semaphore semaphore;
+        VK_CHECK_AND_SET(semaphore, m_Device.createSemaphore({ }), "Unable to create semaphore");
+        m_AcquireFrameSemaphores.push_back(semaphore);
+        VK_CHECK_AND_SET(semaphore, m_Device.createSemaphore({ }), "Unable to create semaphore");
+        m_ReleaseFrameSemaphores.push_back(semaphore);
+    }
+
+    VK_CHECK_AND_SET(m_CommandPool, m_Device.createCommandPool(vk::CommandPoolCreateInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, m_QueueFamilyInfo.graphicsIndex)), "Unable to create command pool");
+    vk::CommandBufferAllocateInfo commandBufferAllocateInfo(m_CommandPool, vk::CommandBufferLevel::ePrimary, 1);
+    VK_CHECK_AND_SET(m_DrawBuffer, m_Device.allocateCommandBuffers(commandBufferAllocateInfo).front(), "Unable to allocate command buffers");
+    VK_CHECK_AND_SET(m_ExecutionFence, m_Device.createFence(vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled)), "Failed to create execution fence");
+}
+
+void App::OnResize(GLFWwindow *window, int width, int height)
+{
+    App *pBlossom = static_cast<App *>(glfwGetWindowUserPointer(window));
+    pBlossom->m_WindowResized = true;
+}
+
+void App::CreateShaders(const std::string &vertPath, const std::string &fragPath)
+{
+    auto vertexShader = LoadShader(vertPath);
+    auto fragmentShader = LoadShader(fragPath);
+    std::vector<vk::ShaderCreateInfoEXT> shaderCreateInfos;
+    
+    shaderCreateInfos.push_back(
+            GetShaderCreateInfo(
+                vk::ShaderStageFlagBits::eVertex, 
+                vk::ShaderStageFlagBits::eFragment, 
+                vertexShader));
+    shaderCreateInfos.push_back(
+            GetShaderCreateInfo(
+                vk::ShaderStageFlagBits::eFragment, 
+                (vk::ShaderStageFlagBits)0, 
+                fragmentShader));
+
+    auto results = m_Device.createShadersEXT(shaderCreateInfos);
+    switch (results.result)
+    {
+        case vk::Result::eSuccess:
+            break;
+        case vk::Result::eErrorIncompatibleShaderBinaryEXT:
+            std::print("Incompatible shader binary!\n");
+            exit(1);
+        default:
+            std::print("Unable to create shaders\n");
+            exit(1);
+    }
+    auto shaders = results.value;
+    m_VertexShader = shaders[0];
+    m_FragmentShader = shaders[1];
+}
+
+vk::ShaderCreateInfoEXT App::GetShaderCreateInfo(
+        vk::ShaderStageFlagBits stage,
+        vk::ShaderStageFlagBits nextStage,
+        std::string &shaderCode)
+{
+    vk::ShaderCreateInfoEXT shaderCreateInfo(
+            {}, 
+            stage, 
+            nextStage,
+            vk::ShaderCodeTypeEXT::eSpirv, 
+            shaderCode.size(), 
+            shaderCode.c_str(), 
+            "main");
+
+    return shaderCreateInfo;
+}
+
+std::string App::LoadShader(const std::string &path)
+{
+    char buf[1024]; // we could clear this but it doesnt matter
+    std::string shaderCode;
+    std::ifstream shaderStream(path);
+    if (!shaderStream.is_open())
+    {
+        std::print("Unable to open file: {}\n", path);
+        exit(1);
+    }
+
+    int charsRead;
+    while (!shaderStream.eof())
+    {
+        shaderStream.read(buf, 1024);
+        charsRead = shaderStream.gcount();
+        shaderCode.append(buf, charsRead);
+    }
+    return shaderCode;
+}

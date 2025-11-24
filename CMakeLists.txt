@@ -11,3 +11,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_executable(${PROJECT_NAME} src/app.cpp src/app.hpp)
 target_link_libraries(${PROJECT_NAME} glfw Vulkan::Vulkan)
 
+target_compile_definitions(${PROJECT_NAME} PRIVATE 
+    VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1)
+
