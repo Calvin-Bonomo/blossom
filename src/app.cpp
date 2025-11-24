@@ -2,6 +2,12 @@
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE;
 
+float vertices[9] = {
+    0.5f, 0.25f, 0.0f,
+    0.25f, 0.75f, 0.0f,
+    0.75f, 0.75f, 0.0f
+};
+
 int main() {
     App app;
     app.Run();
@@ -45,6 +51,7 @@ void App::Run()
 {
     while (!glfwWindowShouldClose(m_Window))
     {
+        glfwPollEvents();
         while (m_Device.waitForFences(m_ExecutionFence, vk::True, 0) == vk::Result::eTimeout);
 
         vk::ResultValue<uint32_t> imageIndex = m_Device.acquireNextImageKHR(m_Swapchain, UINT64_MAX, m_AcquireFrameSemaphores[m_CurrentFrame]);
@@ -95,6 +102,33 @@ void App::Run()
         m_DrawBuffer.pipelineBarrier2(vk::DependencyInfo({ }, nullptr, nullptr, colorTransitionBarrier));
 
         m_DrawBuffer.beginRendering(renderInfo);
+        vk::SampleMask mask = ~(uint32_t)0;
+
+        m_DrawBuffer.setViewportWithCount(m_Viewport);
+        m_DrawBuffer.setScissorWithCount(m_Scissor);
+        m_DrawBuffer.setRasterizerDiscardEnable(vk::False);
+        m_DrawBuffer.setRasterizationSamplesEXT(vk::SampleCountFlagBits::e1);
+        m_DrawBuffer.setSampleMaskEXT(vk::SampleCountFlagBits::e1, mask);
+        m_DrawBuffer.setAlphaToCoverageEnableEXT(vk::False);
+        m_DrawBuffer.setPolygonModeEXT(vk::PolygonMode::eFill);
+        m_DrawBuffer.setCullMode(vk::CullModeFlagBits::eNone);
+        m_DrawBuffer.setFrontFace(vk::FrontFace::eCounterClockwise);
+        m_DrawBuffer.setDepthTestEnable(vk::False);
+        m_DrawBuffer.setDepthBiasEnable(vk::False);
+        m_DrawBuffer.setStencilTestEnable(vk::False);
+
+        m_DrawBuffer.setVertexInputEXT(nullptr, nullptr);
+        m_DrawBuffer.setPrimitiveTopology(vk::PrimitiveTopology::eTriangleList);
+        m_DrawBuffer.setPrimitiveRestartEnable(vk::False);
+
+        m_DrawBuffer.setColorBlendEnableEXT(0, vk::False);
+        m_DrawBuffer.setColorWriteMaskEXT(0, 
+                vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
+
+        m_DrawBuffer.bindShadersEXT(vk::ShaderStageFlagBits::eVertex, m_VertexShader);
+        m_DrawBuffer.bindShadersEXT(vk::ShaderStageFlagBits::eFragment, m_FragmentShader);
+
+        m_DrawBuffer.draw(3, 1, 0, 0);
 
         m_DrawBuffer.endRendering();
 
@@ -131,7 +165,7 @@ void App::Run()
             continue;
         }
         m_CurrentFrame = (m_CurrentFrame + 1) % m_SwapchainImages.size();
-        glfwPollEvents();
+        glfwSwapBuffers(m_Window);
     }
 
     m_Device.waitIdle();
@@ -394,6 +428,9 @@ void App::CreateSwapchain()
         VK_CHECK_AND_SET(imageView, m_Device.createImageView(imageViewCI), "Unable to create image view");
         m_SwapchainImageViews.push_back(imageView);
     }
+
+    m_Viewport = vk::Viewport(0, 0, m_Settings.width, m_Settings.height, 0.0f, 1.0f);
+    m_Scissor = vk::Rect2D({0, 0}, extent);
 }
 
 void App::DestroySwapchain()
@@ -403,6 +440,13 @@ void App::DestroySwapchain()
 
     m_SwapchainImageViews.clear();
     m_SwapchainImages.clear();
+}
+
+void App::CreateVertexBuffer()
+{
+    vk::BufferCreateInfo bufferCI({}, sizeof(float) * 9, vk::BufferUsageFlagBits::eVertexBuffer, vk::SharingMode::eExclusive);
+
+    VK_CHECK_AND_SET(m_VertexBuffer, m_Device.createBuffer(bufferCI), "Unable to create buffer");
 }
 
 void App::SetupDraw()

@@ -77,6 +77,8 @@ private:
             std::string &shaderCode);
     std::string LoadShader(const std::string &path);
 
+    void CreateVertexBuffer();
+
     // Draw setup
     void SetupDraw();
 
@@ -105,5 +107,8 @@ private:
     bool m_WindowResized;
     vk::ShaderEXT m_VertexShader;
     vk::ShaderEXT m_FragmentShader;
+    vk::Buffer m_VertexBuffer;
+    vk::Viewport m_Viewport;
+    vk::Rect2D m_Scissor;
 };
 
