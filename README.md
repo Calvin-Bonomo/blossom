@@ -37,28 +37,28 @@ This list may get bigger, but adding sound will probably be the end beyond basic
 ## Write-up
 This will act as a living document for the duration of the project to document my decision making and give some insight into my thought process. This won't cover every single choice, but it should cover anything big or important.
 ### Table of Contents
-1. [Build System](###build-system)
-2. [Vulkan](###vulkan)
-    1. [Vulkan-Hpp](####vulkan-hpp)
-    2. [Features and Extensions](####features-and-extensions)
-        1. [Dynamic Rendering](#####dynamic-rendering)
-        2. [Synchronization 2](#####synchronization-2)
-        3. [Shader Objects](#####shader-objects)
-3. [Libraries](###libraries)
-    1. [GLFW](####glfw)
-### Build System
+- [1 Build System](#1-build-system)
+- [2 Vulkan](#2-vulkan)
+    - [2.1 Vulkan-Hpp](#21-vulkan-hpp)
+    - [2.2 Features and Extensions](#22-features-and-extensions)
+        - [2.2.1 Dynamic Rendering](#221-dynamic-rendering)
+        - [2.2.2 Synchronization 2](#222-synchronization-2)
+        - [2.2.3 Shader Objects](#223-shader-objects)
+- [3 Libraries](#3-libraries)
+    - [3.1 GLFW](#31-glfw)
+### 1. Build System
 I decided to use CMake because of my familiarity with it, and its ease of use. Furthermore, there are a lot of resources that use CMake and it is used in a lot of Khronos's own documentation for [Vulkan](https://github.com/KhronosGroup/Vulkan-Hpp).
-### Vulkan
-#### Vulkan-Hpp
+### 2. Vulkan
+#### 2.1. Vulkan-Hpp
 As I was already developing in C++, using the official C++ binding for the implementation was a given. However, I'm not super happy about all the `try catch` statements. Fortunately, this is fixable through some macro definitions. This is a big win, and I really love the new function call syntax.
-#### Features and Extensions
+#### 2.2. Features and Extensions
 This is going to be very long, but for a good reason. Vulkan has a growing list of features and extensions which have limited platform availability. Using any of these features or extensions limits the number of platforms on which Blossom is available, so each should have careful consideration or -at the very least- a good reason for being implemented. I also won't talk about swapchains as an extension because Blossom is a realtime renderer, and it needs WSI.
-##### Dynamic Rendering
+##### 2.2.1. Dynamic Rendering
 This really was just to get past the headache of make framebuffers and render passes. As far as I can tell, this only really poses a problem to low-power device (i.e. smart phones). If it cuts down on boilerplate with minimal harm. I'm game.
-##### Synchronization 2
+##### 2.2.2. Synchronization 2
 I'll admit that this part is still a bit over my head, but Synchronization 2 seems to provide a better synchronization system than Vulkan originally provided.
-##### Shader Objects
+##### 2.2.3. Shader Objects
 Originally, I got really excited about not having to create pipelines, but the amount of dynamic state you have to set with shader objects makes me a little nervous. These are features that I don't see myself chaing all that often, and I want to profile this to see what gets better performance. Depending on what I see, I may move back to pipelines.
-### Libraries
-#### GLFW
+### 3. Libraries
+#### 3.1. GLFW
 GLFW is really reliable and easy to use. It provides minimal abstraction while being cross-platform. It also has a lot of resources dedicated to it, making it easy to debug. While it doesn't have all the features of SDL2, that was kind of the appeal. My goal was to maximize my own ability to customize this project, and GLFW gives me an opportunity to do just that.
