@@ -2,6 +2,16 @@
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE;
 
+constexpr auto HAS_GRAPHICS_QUEUE = [](std::pair<int, std::vector<IndexTypes>> pair) {
+    return std::ranges::contains(pair.second, IndexTypes::GraphicsIndex);
+};
+constexpr auto HAS_PRESENT_QUEUE = [](std::pair<int, std::vector<IndexTypes>> pair) {
+    return std::ranges::contains(pair.second, IndexTypes::PresentIndex);
+};
+constexpr auto HAS_COMPUTE_QUEUE = [](std::pair<int, std::vector<IndexTypes>> pair) {
+    return std::ranges::contains(pair.second, IndexTypes::ComputeIndex);
+};
+
 float vertices[9] = {
     0.5f, 0.25f, 0.0f,
     0.25f, 0.75f, 0.0f,
@@ -94,8 +104,8 @@ void App::Run()
                 vk::AccessFlagBits2::eColorAttachmentWrite,
                 vk::ImageLayout::eUndefined,
                 vk::ImageLayout::eColorAttachmentOptimal,
-                m_QueueFamilyInfo.graphicsIndex,
-                m_QueueFamilyInfo.graphicsIndex,
+                m_DeviceScore.graphicsIndex,
+                m_DeviceScore.graphicsIndex,
                 m_SwapchainImages[imageIndex.value],
                 range);
 
@@ -139,8 +149,8 @@ void App::Run()
                 vk::AccessFlagBits2::eNone,
                 vk::ImageLayout::eColorAttachmentOptimal,
                 vk::ImageLayout::ePresentSrcKHR,
-                m_QueueFamilyInfo.graphicsIndex,
-                m_QueueFamilyInfo.presentIndex,
+                m_DeviceScore.graphicsIndex,
+                m_DeviceScore.presentIndex,
                 m_SwapchainImages[imageIndex.value],
                 range);
 
@@ -247,27 +257,27 @@ void App::CreateDevice()
     std::vector<vk::PhysicalDevice> physicalDevices;
     VK_CHECK_AND_SET(physicalDevices, m_Instance.enumeratePhysicalDevices(), "Unable to enumerate physical devices!");
     
-    bool deviceFound = false;
-
-    QueueFamilyInfo queueFamilyInfo;
+    DeviceScore topScore, currentScore;
+    vk::PhysicalDevice physicalDevice;
 
     for (const auto &device : physicalDevices)
     {
-        if (CheckPhysicalDevice(device))
-        {
-            m_PhysicalDevice = device;
-            deviceFound = true;
-            break;
+        currentScore = CheckPhysicalDevice(device);
+        if (currentScore.score > topScore.score) {
+            physicalDevice = device;
+            topScore = currentScore;
         }
-        m_QueueFamilyInfo.Reset();
     }
 
-    if (!deviceFound)
-        throw std::runtime_error("Unable to find suitable physical device!");
+    m_DeviceScore = topScore;
+    m_PhysicalDevice = physicalDevice;
+    std::string deviceName(m_PhysicalDevice.getProperties().deviceName);
+
+    std::print("Chose {} as physical device\n", deviceName);
 
     float priority = 0.0f;
     std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
-    for (const auto &uniqueQueue : m_QueueFamilyInfo.GetUniqueQueueIndices())
+    for (const auto &uniqueQueue : m_DeviceScore.GetUniqueQueueIndices())
     {
         queueCreateInfos.push_back(
                 vk::DeviceQueueCreateInfo(
@@ -299,32 +309,75 @@ void App::CreateDevice()
 
     VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Device);
 
-    VK_CHECK_AND_SET(m_GraphicsQueue, m_Device.getQueue(m_QueueFamilyInfo.graphicsIndex, 0), "Unable to get graphics queue");
-    VK_CHECK_AND_SET(m_PresentQueue, m_Device.getQueue(m_QueueFamilyInfo.presentIndex, 0), "Unable to get present queue");
-    VK_CHECK_AND_SET(m_ComputeQueue, m_Device.getQueue(m_QueueFamilyInfo.computeIndex, 0), "Unable to get compute queue");
+    VK_CHECK_AND_SET(m_GraphicsQueue, m_Device.getQueue(m_DeviceScore.graphicsIndex, 0), "Unable to get graphics queue");
+    VK_CHECK_AND_SET(m_PresentQueue, m_Device.getQueue(m_DeviceScore.presentIndex, 0), "Unable to get present queue");
+    VK_CHECK_AND_SET(m_ComputeQueue, m_Device.getQueue(m_DeviceScore.computeIndex, 0), "Unable to get compute queue");
 }
 
-bool App::CheckPhysicalDevice(const vk::PhysicalDevice &device)
+DeviceScore App::CheckPhysicalDevice(const vk::PhysicalDevice &device)
 {
-    if (device.getProperties().deviceType != vk::PhysicalDeviceType::eDiscreteGpu)
-        return false;
+    DeviceScore deviceScore;
 
-    std::vector<vk::QueueFamilyProperties> queueFamilies = device.getQueueFamilyProperties();
+    vk::PhysicalDeviceProperties2 properties2 = device.getProperties2();
 
-    for (int i = 0; i < queueFamilies.size(); i++)
+    if (properties2.properties.deviceType != vk::PhysicalDeviceType::eDiscreteGpu)
+        deviceScore.score += 1000;
+
+    std::vector<vk::QueueFamilyProperties> queueFamilyProperties = device.getQueueFamilyProperties();
+    int i;
+    size_t numQueueFamilies = queueFamilyProperties.size();
+    std::unordered_map<int, std::vector<IndexTypes>> indexTypes(numQueueFamilies);
+
+    for (i = 0; i < numQueueFamilies; i++)
     {
-       if (queueFamilies[i].queueFlags & vk::QueueFlagBits::eGraphics)
-           m_QueueFamilyInfo.graphicsIndex = i;
-       if (glfwGetPhysicalDevicePresentationSupport(m_Instance, device, i)) 
-           m_QueueFamilyInfo.presentIndex = i;
-       if (queueFamilies[i].queueFlags & vk::QueueFlagBits::eCompute)
-           m_QueueFamilyInfo.computeIndex = i;
-
-       if (m_QueueFamilyInfo.IsComplete())
-           return true;
+        if (queueFamilyProperties[i].queueFlags & vk::QueueFlagBits::eGraphics)
+            indexTypes[i].push_back(IndexTypes::GraphicsIndex);
+        if (queueFamilyProperties[i].queueFlags & vk::QueueFlagBits::eCompute)
+            indexTypes[i].push_back(IndexTypes::ComputeIndex);
+        if (glfwGetPhysicalDevicePresentationSupport(m_Instance, device, i) == GLFW_TRUE)
+            indexTypes[i].push_back(IndexTypes::PresentIndex);
     }
 
-    return false;
+    auto graphicsIndicesView = indexTypes | std::views::filter(HAS_GRAPHICS_QUEUE);
+    auto presentIndicesView  = indexTypes | std::views::filter(HAS_PRESENT_QUEUE);
+    auto computeIndicesView  = indexTypes | std::views::filter(HAS_COMPUTE_QUEUE);
+
+    if (graphicsIndicesView.empty() || presentIndicesView.empty() || computeIndicesView.empty())
+    {
+        deviceScore.score = -1;
+        return deviceScore;
+    }
+
+    auto minGraphicsQueueFamily = GetNarrowestQueueFamilyIndex(graphicsIndicesView);
+    auto minPresentQueueFamily = GetNarrowestQueueFamilyIndex(presentIndicesView);
+    auto minComputeQueueFamily = GetNarrowestQueueFamilyIndex(computeIndicesView);
+
+    deviceScore.score += (9 - std::clamp((int)minGraphicsQueueFamily.second, 0, 3)
+                            - std::clamp((int)minPresentQueueFamily.second , 0, 3)
+                            - std::clamp((int)minComputeQueueFamily.second , 0, 3)) * 10;
+    
+    deviceScore.graphicsIndex = minGraphicsQueueFamily.first;
+    deviceScore.presentIndex = minPresentQueueFamily.first;
+    deviceScore.computeIndex = minComputeQueueFamily.first;
+
+    return deviceScore;
+}
+
+std::pair<int, size_t> App::GetNarrowestQueueFamilyIndex(auto &queueFamilyIndices)
+{
+    int min;
+    size_t totalQueueFamilies = std::numeric_limits<int>::max(), currentQueueFamilies;
+    for (const auto &pair : queueFamilyIndices)
+    {
+        currentQueueFamilies = pair.second.size();
+        if (currentQueueFamilies < totalQueueFamilies) 
+        {
+            min = pair.first;
+            totalQueueFamilies = currentQueueFamilies;
+        }
+    }
+
+    return { min, totalQueueFamilies };
 }
 
 void App::CreateSurface()
@@ -462,7 +515,7 @@ void App::SetupDraw()
         m_ReleaseFrameSemaphores.push_back(semaphore);
     }
 
-    VK_CHECK_AND_SET(m_CommandPool, m_Device.createCommandPool(vk::CommandPoolCreateInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, m_QueueFamilyInfo.graphicsIndex)), "Unable to create command pool");
+    VK_CHECK_AND_SET(m_CommandPool, m_Device.createCommandPool(vk::CommandPoolCreateInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, m_DeviceScore.graphicsIndex)), "Unable to create command pool");
     vk::CommandBufferAllocateInfo commandBufferAllocateInfo(m_CommandPool, vk::CommandBufferLevel::ePrimary, 1);
     VK_CHECK_AND_SET(m_DrawBuffer, m_Device.allocateCommandBuffers(commandBufferAllocateInfo).front(), "Unable to allocate command buffers");
     VK_CHECK_AND_SET(m_ExecutionFence, m_Device.createFence(vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled)), "Failed to create execution fence");

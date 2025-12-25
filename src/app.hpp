@@ -16,26 +16,23 @@
 #include <limits>
 #include <iostream>
 #include <fstream>
+#include <unordered_map>
+#include <ranges>
 
-struct QueueFamilyInfo
+enum class IndexTypes {
+    GraphicsIndex,
+    PresentIndex,
+    ComputeIndex
+};
+
+struct DeviceScore
 {
-    int32_t graphicsIndex;
-    int32_t presentIndex;
-    int32_t computeIndex;
+    int32_t graphicsIndex = -1;
+    int32_t presentIndex = -1;
+    int32_t computeIndex = -1; 
+    int32_t score = 0;
 
-    QueueFamilyInfo() 
-    {
-        Reset();
-    }
-
-    void Reset()
-    {
-        graphicsIndex = -1;
-        presentIndex = -1;
-        computeIndex = -1;
-    }
-
-    bool IsComplete()
+    bool IsComplete() 
     {
         return graphicsIndex >= 0 && presentIndex >= 0 && computeIndex >= 0;
     }
@@ -63,7 +60,8 @@ private:
 
     // Device Initialization
     void CreateDevice();
-    bool CheckPhysicalDevice(const vk::PhysicalDevice &device);
+    DeviceScore CheckPhysicalDevice(const vk::PhysicalDevice &device);
+    std::pair<int, size_t> GetNarrowestQueueFamilyIndex(auto &queueFamilyIndices);
     
     // Swapchain and surface creation
     void CreateSurface();
@@ -89,7 +87,7 @@ private:
     Settings m_Settings;
     vk::Instance m_Instance;
     vk::PhysicalDevice m_PhysicalDevice;
-    QueueFamilyInfo m_QueueFamilyInfo;
+    DeviceScore m_DeviceScore;
     vk::Device m_Device;
     vk::SurfaceKHR m_Surface;
     vk::SwapchainKHR m_Swapchain;
