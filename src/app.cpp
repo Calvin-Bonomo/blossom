@@ -33,6 +33,7 @@ App::App()
     CreateSurface();
     CreateSwapchain();
     CreateShaders("res/vert.spv", "res/frag.spv");
+    CreatePipeline();
     SetupDraw();
 }
 
@@ -44,8 +45,10 @@ App::~App()
         m_Device.destroySemaphore(semaphore);
     for (const auto &semaphore : m_ReleaseFrameSemaphores)
         m_Device.destroySemaphore(semaphore);
-    m_Device.destroyShaderEXT(m_VertexShader);
-    m_Device.destroyShaderEXT(m_FragmentShader);
+    m_Device.destroyPipeline(m_GraphicsPipeline);
+    m_Device.destroyPipelineLayout(m_PipelineLayout);
+    m_Device.destroyShaderModule(m_VertexShader);
+    m_Device.destroyShaderModule(m_FragmentShader);
     for (const auto &imageView : m_SwapchainImageViews)
         m_Device.destroyImageView(imageView);
     m_Device.destroySwapchainKHR(m_Swapchain);
@@ -112,31 +115,8 @@ void App::Run()
         m_DrawBuffer.pipelineBarrier2(vk::DependencyInfo({ }, nullptr, nullptr, colorTransitionBarrier));
 
         m_DrawBuffer.beginRendering(renderInfo);
-        vk::SampleMask mask = ~(uint32_t)0;
 
-        m_DrawBuffer.setViewportWithCount(m_Viewport);
-        m_DrawBuffer.setScissorWithCount(m_Scissor);
-        m_DrawBuffer.setRasterizerDiscardEnable(vk::False);
-        m_DrawBuffer.setRasterizationSamplesEXT(vk::SampleCountFlagBits::e1);
-        m_DrawBuffer.setSampleMaskEXT(vk::SampleCountFlagBits::e1, mask);
-        m_DrawBuffer.setAlphaToCoverageEnableEXT(vk::False);
-        m_DrawBuffer.setPolygonModeEXT(vk::PolygonMode::eFill);
-        m_DrawBuffer.setCullMode(vk::CullModeFlagBits::eNone);
-        m_DrawBuffer.setFrontFace(vk::FrontFace::eCounterClockwise);
-        m_DrawBuffer.setDepthTestEnable(vk::False);
-        m_DrawBuffer.setDepthBiasEnable(vk::False);
-        m_DrawBuffer.setStencilTestEnable(vk::False);
-
-        m_DrawBuffer.setVertexInputEXT(nullptr, nullptr);
-        m_DrawBuffer.setPrimitiveTopology(vk::PrimitiveTopology::eTriangleList);
-        m_DrawBuffer.setPrimitiveRestartEnable(vk::False);
-
-        m_DrawBuffer.setColorBlendEnableEXT(0, vk::False);
-        m_DrawBuffer.setColorWriteMaskEXT(0, 
-                vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
-
-        m_DrawBuffer.bindShadersEXT(vk::ShaderStageFlagBits::eVertex, m_VertexShader);
-        m_DrawBuffer.bindShadersEXT(vk::ShaderStageFlagBits::eFragment, m_FragmentShader);
+        m_DrawBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline);
 
         m_DrawBuffer.draw(3, 1, 0, 0);
 
@@ -293,13 +273,12 @@ void App::CreateDevice()
 
     vk::PhysicalDeviceFeatures2 deviceFeatures;
 
-    vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceShaderObjectFeaturesEXT> chain = {
+    vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features> chain = {
         deviceFeatures,
-        vulkan13Features,
-        vk::PhysicalDeviceShaderObjectFeaturesEXT(vk::True)
+        vulkan13Features
     };
 
-    const char *deviceExtensions[] = { vk::KHRSwapchainExtensionName, vk::EXTShaderObjectExtensionName };
+    const char *deviceExtensions[] = { vk::KHRSwapchainExtensionName };
     vk::StructureChain<vk::DeviceCreateInfo, vk::PhysicalDeviceFeatures2> deviceCreateChain = {
         vk::DeviceCreateInfo(vk::DeviceCreateFlags(), queueCreateInfos, {}, deviceExtensions),
         chain.get<vk::PhysicalDeviceFeatures2>()
@@ -495,6 +474,57 @@ void App::DestroySwapchain()
     m_SwapchainImages.clear();
 }
 
+void App::CreatePipeline() 
+{
+    // Setup Shader stages
+    std::vector<vk::PipelineShaderStageCreateInfo> shaderStageCreateInfos;
+    shaderStageCreateInfos.push_back({{}, vk::ShaderStageFlagBits::eFragment, m_FragmentShader, "main"});
+    shaderStageCreateInfos.push_back({{}, vk::ShaderStageFlagBits::eVertex, m_VertexShader, "main"});
+
+    // Setup vertex input stage
+    vk::PipelineVertexInputStateCreateInfo vertexInputCreateInfo({}, nullptr, nullptr);
+
+    // Setup input assembly stage
+    vk::PipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo({}, vk::PrimitiveTopology::eTriangleList);
+
+    // Setup tesselation state
+    vk::PipelineTessellationStateCreateInfo tesselationCreateInfo({}, 3);
+
+    // Setup viewport state
+    vk::PipelineViewportStateCreateInfo viewportStateCreateInfo({}, m_Viewport, m_Scissor);
+
+    // Setup rasterization state
+    vk::PipelineRasterizationStateCreateInfo rasterizationStateCreateInfo({}, vk::False, vk::True, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack, vk::FrontFace::eCounterClockwise, vk::False, 0, 0, 0, 0);
+
+    // Setup multisample state
+    vk::SampleMask mask = ~(uint32_t)0;
+    vk::PipelineMultisampleStateCreateInfo multisampleStateCreateInfo({}, vk::SampleCountFlagBits::e1);
+
+    // Setup depth stencil state
+    vk::PipelineDepthStencilStateCreateInfo depthStencilCreateInfo({}, vk::False);
+
+    // Setup color blend state
+    vk::PipelineColorBlendStateCreateInfo colorBlendCreateInfo({}, vk::False, vk::LogicOp::eOr, nullptr, {1.0f, 1.0f, 1.0f, 1.0f});
+
+    // Create pipeline layout
+    vk::PipelineLayoutCreateInfo layoutCreateInfo({}, nullptr, nullptr);
+
+    m_PipelineLayout = m_Device.createPipelineLayout(layoutCreateInfo);
+
+    // Create pipeline
+    vk::GraphicsPipelineCreateInfo pipelineCreateInfo({}, shaderStageCreateInfos, &vertexInputCreateInfo, &inputAssemblyCreateInfo, &tesselationCreateInfo, &viewportStateCreateInfo, &rasterizationStateCreateInfo, &multisampleStateCreateInfo, &depthStencilCreateInfo, &colorBlendCreateInfo, nullptr, m_PipelineLayout);
+    auto pipelineResult = m_Device.createGraphicsPipeline(nullptr, pipelineCreateInfo);
+    switch (pipelineResult.result) 
+    {
+        case vk::Result::eSuccess:
+            m_GraphicsPipeline = pipelineResult.value;
+            break;
+        default:
+            std::println("Broke it");
+            break;
+    }
+}
+
 void App::CreateVertexBuffer()
 {
     vk::BufferCreateInfo bufferCI({}, sizeof(float) * 9, vk::BufferUsageFlagBits::eVertexBuffer, vk::SharingMode::eExclusive);
@@ -529,72 +559,32 @@ void App::OnResize(GLFWwindow *window, int width, int height)
 
 void App::CreateShaders(const std::string &vertPath, const std::string &fragPath)
 {
-    auto vertexShader = LoadShader(vertPath);
-    auto fragmentShader = LoadShader(fragPath);
-    std::vector<vk::ShaderCreateInfoEXT> shaderCreateInfos;
-    
-    shaderCreateInfos.push_back(
-            GetShaderCreateInfo(
-                vk::ShaderStageFlagBits::eVertex, 
-                vk::ShaderStageFlagBits::eFragment, 
-                vertexShader));
-    shaderCreateInfos.push_back(
-            GetShaderCreateInfo(
-                vk::ShaderStageFlagBits::eFragment, 
-                (vk::ShaderStageFlagBits)0, 
-                fragmentShader));
+    m_VertexShaderCode = LoadShader(vertPath);
+    m_FragmentShaderCode = LoadShader(fragPath);
 
-    auto results = m_Device.createShadersEXT(shaderCreateInfos);
-    switch (results.result)
-    {
-        case vk::Result::eSuccess:
-            break;
-        case vk::Result::eErrorIncompatibleShaderBinaryEXT:
-            std::print("Incompatible shader binary!\n");
-            exit(1);
-        default:
-            std::print("Unable to create shaders\n");
-            exit(1);
-    }
-    auto shaders = results.value;
-    m_VertexShader = shaders[0];
-    m_FragmentShader = shaders[1];
+    auto vertexShaderCreateInfo = vk::ShaderModuleCreateInfo({ }, m_VertexShaderCode.size() * sizeof(uint32_t), m_VertexShaderCode.data());
+    auto fragmentShaderCreateInfo = vk::ShaderModuleCreateInfo({ }, m_FragmentShaderCode.size() * sizeof(uint32_t), m_FragmentShaderCode.data());
+
+    m_VertexShader = m_Device.createShaderModule(vertexShaderCreateInfo);
+    m_FragmentShader = m_Device.createShaderModule(fragmentShaderCreateInfo);
 }
 
-vk::ShaderCreateInfoEXT App::GetShaderCreateInfo(
-        vk::ShaderStageFlagBits stage,
-        vk::ShaderStageFlagBits nextStage,
-        std::string &shaderCode)
+std::vector<uint32_t> App::LoadShader(const std::string &path)
 {
-    vk::ShaderCreateInfoEXT shaderCreateInfo(
-            {}, 
-            stage, 
-            nextStage,
-            vk::ShaderCodeTypeEXT::eSpirv, 
-            shaderCode.size(), 
-            shaderCode.c_str(), 
-            "main");
-
-    return shaderCreateInfo;
-}
-
-std::string App::LoadShader(const std::string &path)
-{
-    char buf[1024]; // we could clear this but it doesnt matter
-    std::string shaderCode;
-    std::ifstream shaderStream(path);
+    std::ifstream shaderStream(path, std::ios::ate | std::ios::binary);
     if (!shaderStream.is_open())
     {
         std::print("Unable to open file: {}\n", path);
         exit(1);
     }
 
-    int charsRead;
-    while (!shaderStream.eof())
-    {
-        shaderStream.read(buf, 1024);
-        charsRead = shaderStream.gcount();
-        shaderCode.append(buf, charsRead);
-    }
+    size_t fileSize = (size_t) shaderStream.tellg();
+    shaderStream.seekg(0);
+
+    std::vector<uint32_t> shaderCode(fileSize / sizeof(uint32_t));
+
+    shaderStream.read(reinterpret_cast<char *>(shaderCode.data()), fileSize);
+    shaderStream.close();
+
     return shaderCode;
 }

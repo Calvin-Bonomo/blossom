@@ -69,11 +69,9 @@ private:
     void DestroySwapchain();
 
     void CreateShaders(const std::string &fragPath, const std::string &vertPath);
-    vk::ShaderCreateInfoEXT GetShaderCreateInfo(
-            vk::ShaderStageFlagBits stage,
-            vk::ShaderStageFlagBits nextStage,
-            std::string &shaderCode);
-    std::string LoadShader(const std::string &path);
+    std::vector<uint32_t> LoadShader(const std::string &path);
+
+    void CreatePipeline();
 
     void CreateVertexBuffer();
 
@@ -103,10 +101,14 @@ private:
     vk::Fence m_ExecutionFence;
     uint32_t m_CurrentFrame;
     bool m_WindowResized;
-    vk::ShaderEXT m_VertexShader;
-    vk::ShaderEXT m_FragmentShader;
+    std::vector<uint32_t> m_VertexShaderCode;
+    std::vector<uint32_t> m_FragmentShaderCode;
+    vk::ShaderModule m_VertexShader;
+    vk::ShaderModule m_FragmentShader;
     vk::Buffer m_VertexBuffer;
     vk::Viewport m_Viewport;
     vk::Rect2D m_Scissor;
+    vk::PipelineLayout m_PipelineLayout;
+    vk::Pipeline m_GraphicsPipeline;
 };
 
