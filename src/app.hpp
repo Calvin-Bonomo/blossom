@@ -72,6 +72,7 @@ private:
     std::vector<uint32_t> LoadShader(const std::string &path);
 
     void CreatePipeline();
+    void DestroyPipeline();
 
     void CreateVertexBuffer();
 
@@ -96,6 +97,7 @@ private:
     std::vector<vk::Semaphore> m_ReleaseFrameSemaphores;
     std::vector<vk::Image> m_SwapchainImages;
     std::vector<vk::ImageView> m_SwapchainImageViews;
+    vk::Format m_ColorAttachmentFormat;
     vk::CommandPool m_CommandPool;
     vk::CommandBuffer m_DrawBuffer;
     vk::Fence m_ExecutionFence;

@@ -45,8 +45,7 @@ App::~App()
         m_Device.destroySemaphore(semaphore);
     for (const auto &semaphore : m_ReleaseFrameSemaphores)
         m_Device.destroySemaphore(semaphore);
-    m_Device.destroyPipeline(m_GraphicsPipeline);
-    m_Device.destroyPipelineLayout(m_PipelineLayout);
+    DestroyPipeline();
     m_Device.destroyShaderModule(m_VertexShader);
     m_Device.destroyShaderModule(m_FragmentShader);
     for (const auto &imageView : m_SwapchainImageViews)
@@ -152,6 +151,9 @@ void App::Run()
             m_WindowResized = false;
             DestroySwapchain();
             CreateSwapchain();
+            while (m_Device.waitForFences(m_ExecutionFence, vk::True, 1) == vk::Result::eTimeout) { }
+            DestroyPipeline();
+            CreatePipeline();
             continue;
         }
         m_CurrentFrame = (m_CurrentFrame + 1) % m_SwapchainImages.size();
@@ -171,6 +173,8 @@ void App::InitGLFW()
     glfwWindowHint(GLFW_FLOATING, GLFW_FALSE);
 
     m_Window = glfwCreateWindow(m_Settings.width, m_Settings.height, "Blossom", nullptr, nullptr);
+    if (!m_Window)
+        throw std::runtime_error("Unable to create glfw window!");
     glfwSetWindowUserPointer(m_Window, this);
     glfwSetWindowSizeCallback(m_Window, OnResize);
 }
@@ -377,7 +381,7 @@ void App::CreateSwapchain()
     VK_CHECK_AND_SET(availablePresentModes, m_PhysicalDevice.getSurfacePresentModesKHR(m_Surface), "Unable to get surface present modes");
 
     // Get the image format
-    vk::Format format = vk::Format::eUndefined;
+    vk::Format format = surfaceFormats.size() > 0? surfaceFormats[0].format : vk::Format::eUndefined;
     for (const auto & surfaceFormat : surfaceFormats)
     {
         if (surfaceFormat.format == vk::Format::eR8G8B8A8Unorm)
@@ -389,6 +393,7 @@ void App::CreateSwapchain()
 
     if (format == vk::Format::eUndefined)
         throw std::runtime_error("Image format not supprted");
+    m_ColorAttachmentFormat = format;
 
     // Setup double buffering
     uint32_t minImageCount = 2;
@@ -485,7 +490,7 @@ void App::CreatePipeline()
     vk::PipelineVertexInputStateCreateInfo vertexInputCreateInfo({}, nullptr, nullptr);
 
     // Setup input assembly stage
-    vk::PipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo({}, vk::PrimitiveTopology::eTriangleList);
+    vk::PipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo({}, vk::PrimitiveTopology::eTriangleList, vk::False);
 
     // Setup tesselation state
     vk::PipelineTessellationStateCreateInfo tesselationCreateInfo({}, 3);
@@ -494,26 +499,33 @@ void App::CreatePipeline()
     vk::PipelineViewportStateCreateInfo viewportStateCreateInfo({}, m_Viewport, m_Scissor);
 
     // Setup rasterization state
-    vk::PipelineRasterizationStateCreateInfo rasterizationStateCreateInfo({}, vk::False, vk::True, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack, vk::FrontFace::eCounterClockwise, vk::False, 0, 0, 0, 0);
+    vk::PipelineRasterizationStateCreateInfo rasterizationStateCreateInfo({}, vk::False, vk::False, vk::PolygonMode::eFill, vk::CullModeFlagBits::eNone, vk::FrontFace::eCounterClockwise, vk::False, 0, 0, 0, 1.0);
 
     // Setup multisample state
-    vk::SampleMask mask = ~(uint32_t)0;
-    vk::PipelineMultisampleStateCreateInfo multisampleStateCreateInfo({}, vk::SampleCountFlagBits::e1);
+    vk::PipelineMultisampleStateCreateInfo multisampleStateCreateInfo({}, vk::SampleCountFlagBits::e1, vk::False);
 
     // Setup depth stencil state
     vk::PipelineDepthStencilStateCreateInfo depthStencilCreateInfo({}, vk::False);
 
     // Setup color blend state
-    vk::PipelineColorBlendStateCreateInfo colorBlendCreateInfo({}, vk::False, vk::LogicOp::eOr, nullptr, {1.0f, 1.0f, 1.0f, 1.0f});
+    vk::PipelineColorBlendAttachmentState colorBlendAttachmentState(vk::True, vk::BlendFactor::eSrcAlpha, vk::BlendFactor::eOneMinusSrcAlpha, vk::BlendOp::eAdd, vk::BlendFactor::eOne, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
+
+    vk::PipelineColorBlendStateCreateInfo colorBlendCreateInfo({}, vk::False, vk::LogicOp::eCopy, colorBlendAttachmentState, {1.0f, 1.0f, 1.0f, 1.0f});
 
     // Create pipeline layout
     vk::PipelineLayoutCreateInfo layoutCreateInfo({}, nullptr, nullptr);
 
     m_PipelineLayout = m_Device.createPipelineLayout(layoutCreateInfo);
 
+    // Create rendering info for dynamic rendering
+    vk::PipelineRenderingCreateInfo renderingCreateInfo(0, m_ColorAttachmentFormat);
+
     // Create pipeline
-    vk::GraphicsPipelineCreateInfo pipelineCreateInfo({}, shaderStageCreateInfos, &vertexInputCreateInfo, &inputAssemblyCreateInfo, &tesselationCreateInfo, &viewportStateCreateInfo, &rasterizationStateCreateInfo, &multisampleStateCreateInfo, &depthStencilCreateInfo, &colorBlendCreateInfo, nullptr, m_PipelineLayout);
-    auto pipelineResult = m_Device.createGraphicsPipeline(nullptr, pipelineCreateInfo);
+    vk::GraphicsPipelineCreateInfo pipelineCreateInfo({}, shaderStageCreateInfos, &vertexInputCreateInfo, &inputAssemblyCreateInfo, &tesselationCreateInfo, &viewportStateCreateInfo, &rasterizationStateCreateInfo, &multisampleStateCreateInfo, nullptr, &colorBlendCreateInfo, nullptr, m_PipelineLayout);
+
+    vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineChain(pipelineCreateInfo, renderingCreateInfo);
+
+    auto pipelineResult = m_Device.createGraphicsPipeline(nullptr, pipelineChain.get<vk::GraphicsPipelineCreateInfo>());
     switch (pipelineResult.result) 
     {
         case vk::Result::eSuccess:
@@ -523,6 +535,12 @@ void App::CreatePipeline()
             std::println("Broke it");
             break;
     }
+}
+
+void App::DestroyPipeline()
+{
+    m_Device.destroyPipeline(m_GraphicsPipeline);
+    m_Device.destroyPipelineLayout(m_PipelineLayout);
 }
 
 void App::CreateVertexBuffer()
