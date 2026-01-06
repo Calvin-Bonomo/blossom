@@ -59,6 +59,8 @@ This really was just to get past the headache of make framebuffers and render pa
 I'll admit that this part is still a bit over my head, but Synchronization 2 seems to provide a better synchronization system than Vulkan originally provided.
 ##### 2.2.3. Shader Objects
 Originally, I got really excited about not having to create pipelines, but the amount of dynamic state you have to set with shader objects makes me a little nervous. These are features that I don't see myself chaing all that often, and I want to profile this to see what gets better performance. Depending on what I see, I may move back to pipelines.
+(Edit) Ultimately, I decided to move back to pipelines for one reason: compatibility. Because shader objects are still an extension as of Vulkan 1.4, they are not widely supported. This lack of support extends to my 3 year-old laptop which, while not surprising, is dissapointing. However, this does not mean saying goodbye to dynamic state altogether, as I will likely make things relating to window resizing dynamic to avoid recreating pipelines each time the window is resized.
+
 ### 3. Libraries
 #### 3.1. GLFW
 GLFW is really reliable and easy to use. It provides minimal abstraction while being cross-platform. It also has a lot of resources dedicated to it, making it easy to debug. While it doesn't have all the features of SDL2, that was kind of the appeal. My goal was to maximize my own ability to customize this project, and GLFW gives me an opportunity to do just that.
