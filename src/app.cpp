@@ -12,12 +12,6 @@ constexpr auto HAS_COMPUTE_QUEUE = [](std::pair<int, std::vector<IndexTypes>> pa
     return std::ranges::contains(pair.second, IndexTypes::ComputeIndex);
 };
 
-float vertices[9] = {
-    0.5f, 0.25f, 0.0f,
-    0.25f, 0.75f, 0.0f,
-    0.75f, 0.75f, 0.0f
-};
-
 int main() {
     App app;
     app.Run();
