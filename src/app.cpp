@@ -57,6 +57,7 @@ void App::Run()
 {
     while (!glfwWindowShouldClose(m_Window))
     {
+        m_Device.waitIdle();
         glfwPollEvents();
         while (m_Device.waitForFences(m_ExecutionFence, vk::True, 0) == vk::Result::eTimeout);
 
