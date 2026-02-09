@@ -40,6 +40,7 @@ This will act as a living document for the duration of the project to document m
 - [1 Build System](#1-build-system)
 - [2 Vulkan](#2-vulkan)
     - [2.1 Vulkan-Hpp](#21-vulkan-hpp)
+        - [2.1.1 RAII](#211-raii)
     - [2.2 Features and Extensions](#22-features-and-extensions)
         - [2.2.1 Dynamic Rendering](#221-dynamic-rendering)
         - [2.2.2 Synchronization 2](#222-synchronization-2)
@@ -51,6 +52,12 @@ I decided to use CMake because of my familiarity with it, and its ease of use. F
 ### 2. Vulkan
 #### 2.1. Vulkan-Hpp
 As I was already developing in C++, using the official C++ binding for the implementation was a given. However, I'm not super happy about all the `try catch` statements. Fortunately, this is fixable through some macro definitions. This is a big win, and I really love the new function call syntax.
+
+**\[Update 1\]**
+
+The dreaded `try catch` clutter is no more! Thanks to the `VULKAN_HPP_NO_EXCEPTIONS` macro, calls to Vulkan functions which normally throw exceptions when failing now return a `vk::ResultValue` type which can be easily unpacked! Additionally, I decided to forego constructors using the `VULKAN_HPP_NO_CONSTRUCTORS` macro. This allows me to use designated initializer lists which are far more readable especially when doing things like pipeline creation.
+##### 2.1.1. RAII
+Ultimately, I decided not to go with Vulkan-Hpp's RAII objects. I want the experience of having to properly cleanup the application especially in cases such as interrupts. This does not mean that I won't be implementing the RAII principal throughout Blossom.
 #### 2.2. Features and Extensions
 This is going to be very long, but for a good reason. Vulkan has a growing list of features and extensions which have limited platform availability. Using any of these features or extensions limits the number of platforms on which Blossom is available, so each should have careful consideration or -at the very least- a good reason for being implemented. I also won't talk about swapchains as an extension because Blossom is a realtime renderer, and it needs WSI.
 ##### 2.2.1. Dynamic Rendering
