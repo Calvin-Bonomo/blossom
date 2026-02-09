@@ -1,15 +1,15 @@
 #pragma once
 
-#include "vulkan/vulkan_raii.hpp"
+#include "vulkan/vulkan.hpp"
 
 namespace blossom 
 {
-  class Device
-  {
+    class Device
+    {
     private:
-      Device();
+        Device();
 
-      vk::raii::PhysicalDevice m_PhysicalDevice;
-      vk::raii::Device m_LogicalDevice;
-  };
+        vk::PhysicalDevice m_PhysicalDevice;
+        vk::Device m_LogicalDevice;
+    };
 }

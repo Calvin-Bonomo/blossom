@@ -2,29 +2,25 @@
 
 #include <GLFW/glfw3.h>
 
-#include "vulkan/vulkan_raii.hpp"
+#include "vulkan/vulkan.hpp"
 
 namespace blossom 
 {
-  class Window 
-  {
+    class Window 
+    {
     public:
-      Window();
-      ~Window();
+        Window(GLFWwindow *window): m_GLFWWindow(window) { }
+        ~Window();
 
-      vk::raii::SurfaceKHR GetSurface(vk::raii::Instance &instance);
-
-    private:
-      void OnResize(GLFWwindow *window, int width, int height);
+        vk::SurfaceKHR GetSurface(vk::Instance &instance);
 
     private:
-      GLFWwindow *m_GLFWWindow;
+        static void OnResize(GLFWwindow *window, int width, int height);
 
-      vk::raii::SurfaceKHR m_Surface;
+    private:
+        GLFWwindow *m_GLFWWindow;
 
-      uint32_t m_Width;
-      uint32_t m_Height;
-
-      bool m_isFullscreen;
-  };
+        uint32_t m_Width;
+        uint32_t m_Height;
+    };
 }

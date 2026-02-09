@@ -10,11 +10,11 @@ struct PhysicalDeviceScore
   int32_t computeQueue;
 };
 
-PhysicalDeviceScore GetDeviceScore(vk::raii::PhysicalDevice physicalDevice) 
+PhysicalDeviceScore GetDeviceScore(vk::PhysicalDevice physicalDevice) 
 {
 
 }
 
-static Device CreateDevice(vk::raii::Instance instance)
+static Device CreateDevice(vk::Instance instance)
 {
 }
