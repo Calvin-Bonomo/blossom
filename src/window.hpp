@@ -9,7 +9,7 @@ namespace blossom
     class Window 
     {
     public:
-        Window(GLFWwindow *window): m_GLFWWindow(window) { }
+        Window(uint32_t width, uint32_t height);
         ~Window();
 
         vk::SurfaceKHR GetSurface(vk::Instance &instance);
