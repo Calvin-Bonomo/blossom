@@ -12,7 +12,7 @@ namespace blossom
     {
     public:
         Blossom(int width = 600, int height = 400):
-            m_Window(CreateWindow(width, height)),
+            m_Window(Window(width, height)),
             m_Instance(std::move(CreateInstance())),
             m_Device(CreateDevice()),
             m_Swapchain(CreateSwapchain()) { }
