@@ -1,8 +1,6 @@
 #include "window.hpp"
 
-using namespace blossom;
-
-Window::Window(uint32_t width, uint32_t height)
+blossom::Window::Window(uint32_t width, uint32_t height)
     : m_Width(width), m_Height(height)
 {
     if (glfwInit() == GLFW_FALSE)
