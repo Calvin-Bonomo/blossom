@@ -2,8 +2,9 @@
 
 #include "vulkan/vulkan.hpp"
 
+#include "device_p.hpp"
+
 #include "window.hpp"
-#include "device.hpp"
 #include "swapchain.hpp"
 
 namespace blossom 
