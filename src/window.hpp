@@ -8,6 +8,13 @@ namespace blossom
     {
     public:
         Window(uint32_t width, uint32_t height);
+
+        Window(const Window &) = delete;
+        Window &operator=(const Window &) = delete;
+
+        Window(Window &&) = delete;
+        Window &operator=(Window &&) = delete;
+
         ~Window();
 
     private:
