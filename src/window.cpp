@@ -1,5 +1,7 @@
 #include "window.hpp"
 
+#include <stdexcept>
+
 blossom::Window::Window(uint32_t width, uint32_t height)
     : m_Width(width), m_Height(height)
 {
@@ -12,4 +14,10 @@ blossom::Window::Window(uint32_t width, uint32_t height)
     m_GLFWWindow = glfwCreateWindow(width, height, "Blossom", nullptr, nullptr);
     if (!m_GLFWWindow)
         throw std::runtime_error("Unable to create window with glfw!");
+}
+
+blossom::Window::~Window()
+{
+    glfwDestroyWindow(m_GLFWWindow);
+    glfwTerminate();
 }

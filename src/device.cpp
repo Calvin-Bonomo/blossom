@@ -38,6 +38,14 @@ namespace blossom
     std::pair<int, int> GetNarrowestQueueFamilyIndex(std::ranges::input_range auto &&queueFamilyIndices);
 }
 
+blossom::Device::~Device()
+{
+    // We only need to actually clean up the logical device.
+    // Queues will free themselves
+    if (m_LogicalDevice != nullptr)
+        m_LogicalDevice.destroy();
+}
+
 // Get the queue family index with the fewest number of other queues present
 std::pair<int, int> blossom::GetNarrowestQueueFamilyIndex(std::ranges::input_range auto &&queueFamilyIndices)
 {

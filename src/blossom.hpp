@@ -5,7 +5,7 @@
 #include "device_p.hpp"
 
 #include "window.hpp"
-#include "swapchain.hpp"
+#include "swapchain_p.hpp"
 
 namespace blossom 
 {
@@ -13,18 +13,24 @@ namespace blossom
     {
     public:
         Blossom(int width = 600, int height = 400):
-            m_Window(Window(width, height)),
-            m_Instance(std::move(CreateInstance())),
-            m_Device(CreateDevice()),
-            m_Swapchain(CreateSwapchain()) { }
+            m_Window(width, height),
+            m_Instance(CreateInstance()),
+            m_Device(m_Instance),
+            m_Swapchain() { }
+
+        // These are deleted because they have weird implications
+        // for the dynamic loader. If I ever write my own loader,
+        // then these may come back... at least the move semantics might.
+        Blossom(const Blossom &) = delete;
+        Blossom &operator=(const Blossom &) = delete;
+
+        Blossom(Blossom &&) = delete;
+        Blossom &operator=(Blossom &&) = delete;
 
         ~Blossom();
 
     private:
-        Window CreateWindow(int width, int height);
         vk::Instance CreateInstance();
-        Device CreateDevice();
-        Swapchain CreateSwapchain();
 
         static std::vector<const char *> GetInstanceLayers();
         static std::vector<const char *> GetInstanceExtensions();

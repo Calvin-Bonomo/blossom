@@ -9,13 +9,21 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE;
 
 int main()
 {
-    // Dummy main to get the project to compile
+    blossom::Blossom enigne;
+}
+
+blossom::Blossom::~Blossom()
+{
+    if (m_Instance != nullptr)
+        m_Instance.destroy();
 }
 
 // Instance creation stuff
 
 vk::Instance blossom::Blossom::CreateInstance()
 {
+    VULKAN_HPP_DEFAULT_DISPATCHER.init();
+
     vk::ApplicationInfo appInfo {
         .pApplicationName = "Blossom",
         .applicationVersion = 1,
@@ -64,7 +72,7 @@ std::vector<const char *> blossom::Blossom::GetInstanceLayers()
                 return std::any_of(
                         layerProperties.begin(), 
                         layerProperties.end(), 
-                        [&name](vk::LayerProperties const &property) { return strcmp(name, property.layerName) == 0;});
+                        [&name](vk::LayerProperties const &property) { return strcmp(name, property.layerName) == 0; });
             }))
     {
         throw std::runtime_error("Unable to get requested instance layers!");

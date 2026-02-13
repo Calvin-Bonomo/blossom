@@ -8,6 +8,14 @@ namespace blossom
     {
         Device(const vk::Instance &instance);
 
+        Device(const Device &) = delete;
+        Device &operator=(const Device &) = delete;
+
+        Device(Device &&) = delete;
+        Device &operator=(Device &&) = delete;
+
+        ~Device();
+
         operator vk::Device() const 
         {
             return m_LogicalDevice;
